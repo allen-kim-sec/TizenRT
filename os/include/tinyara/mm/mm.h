@@ -249,6 +249,19 @@ typedef void *mmaddress_t;             /* 32 bit address space */
 #define SIZEOF_MM_FREE_DEBUG_INFO 0
 #endif
 
+/* CONFIG_MM_BACKTRACE: backtrace field sizes (ported from NuttX) */
+#ifdef CONFIG_MM_BACKTRACE_SEQNO
+#define SIZEOF_MM_BACKTRACE_SEQNO sizeof(unsigned long)
+#else
+#define SIZEOF_MM_BACKTRACE_SEQNO 0
+#endif
+
+#if CONFIG_MM_BACKTRACE > 0
+#define SIZEOF_MM_BACKTRACE_PTRS  (sizeof(FAR void *) * CONFIG_MM_BACKTRACE)
+#else
+#define SIZEOF_MM_BACKTRACE_PTRS  0
+#endif
+
 /* This describes an allocated chunk.  An allocated chunk is
  * distinguished from a free chunk by bit 15/31 of the 'preceding' chunk
  * size.  If set, then this is an allocated chunk.
@@ -257,50 +270,106 @@ typedef void *mmaddress_t;             /* 32 bit address space */
 struct mm_allocnode_s {
 	mmsize_t preceding;				/* Size of the preceding chunk */
 #ifdef CONFIG_DEBUG_MM_HEAPINFO
-	mmaddress_t alloc_call_addr;			/* malloc call address */
+	mmaddress_t alloc_call_addr;			/* malloc call address (1-level) */
 	pid_t pid;					/* PID info */
-	uint16_t memory_state;				/* Memory state for leak detection. */
+	uint16_t memory_state;				/* Memory state for leak detection */
 #endif
 	mmsize_t size;					/* Size of this chunk */
+	/* backtrace fields AFTER size so size stays at same offset as mm_freenode_s.
+	 * They overlap the flink/blink region of a free chunk — a chunk is either
+	 * allocated OR free, never both, so the storage is shared safely. */
+#ifdef CONFIG_MM_BACKTRACE_SEQNO
+	unsigned long seqno;				/* Allocation sequence number */
+#endif
+#if CONFIG_MM_BACKTRACE > 0
+	FAR void *backtrace[CONFIG_MM_BACKTRACE];	/* Call-stack at malloc time */
+#endif
+}
+/* Force sizeof(mm_allocnode_s) to a multiple of MM_MIN_CHUNK (16).  The
+ * allocator returns (node + SIZEOF_MM_ALLOCNODE) as the user pointer and
+ * places every node on a MM_MIN_CHUNK boundary; if the header were not a
+ * granule multiple, both node placement and the returned pointer would be
+ * misaligned.  Without backtrace this is already 16, so it is a no-op there;
+ * with CONFIG_MM_BACKTRACE=4 it rounds 36 -> 48. */
+__attribute__((aligned(MM_MIN_CHUNK)));
 
-};
-
-/* What is the size of the allocnode? */
-
-#define SIZEOF_MM_ALLOCNODE \
-	(sizeof(mmsize_t) + sizeof(mmsize_t) + SIZEOF_MM_MALLOC_DEBUG_INFO)
-
-#define CHECK_ALLOCNODE_SIZE \
-	DEBUGASSERT(sizeof(struct mm_allocnode_s) == SIZEOF_MM_ALLOCNODE)
+/* Use sizeof() so SIZEOF_MM_ALLOCNODE always matches regardless of padding */
+#define SIZEOF_MM_ALLOCNODE  sizeof(struct mm_allocnode_s)
+#define CHECK_ALLOCNODE_SIZE DEBUGASSERT(sizeof(struct mm_allocnode_s) == SIZEOF_MM_ALLOCNODE)
 
 /* This describes a free chunk */
 
 struct mm_freenode_s {
 	mmsize_t preceding;			/* Size of the preceding chunk */
 #ifdef CONFIG_DEBUG_MM_HEAPINFO
-	mmaddress_t alloc_call_addr;			/* malloc call address */
+	mmaddress_t alloc_call_addr;			/* malloc call address (1-level) */
 	pid_t pid;					/* PID info */
-	uint16_t memory_state;				/* Memory state for leak detection. */
+	uint16_t memory_state;				/* Memory state for leak detection */
 #endif
-	mmsize_t size;				/* Size of this chunk */
+	mmsize_t size;				/* Size of this chunk — same offset as mm_allocnode_s */
 	FAR struct mm_freenode_s *flink;	/* Supports a doubly linked list */
 	FAR struct mm_freenode_s *blink;
 #ifdef CONFIG_DEBUG_MM_FREEINFO
 	mmaddress_t free_call_addr;		/* free call address */
 	pid_t free_call_pid;			/* free call PID */
-	uint16_t reserved;				/* Reserved for future use and padding for 4-byte alignment */
+	uint16_t reserved;			/* Reserved / padding for 4-byte alignment */
 #endif
-};
+	/* The allocator invariant requires SIZEOF_MM_FREENODE >= SIZEOF_MM_ALLOCNODE
+	 * (every chunk must be able to hold an alloc header; the corruption checker
+	 * and split thresholds enforce this).  Because mm_allocnode_s grew by the
+	 * seqno/backtrace region, mirror that size here as reserved padding so the
+	 * free node stays the larger of the two.  Free nodes do not record a
+	 * backtrace; these fields are never read for a free chunk. */
+#ifdef CONFIG_MM_BACKTRACE_SEQNO
+	unsigned long reserved_seqno;
+#endif
+#if CONFIG_MM_BACKTRACE > 0
+	FAR void *reserved_backtrace[CONFIG_MM_BACKTRACE];
+#endif
+}
+/* Same alignment rule as mm_allocnode_s: keep sizeof a MM_MIN_CHUNK multiple
+ * so node placement and size accounting stay granule-aligned. */
+__attribute__((aligned(MM_MIN_CHUNK)));
 
-/* What is the size of the freenode? */
+/* Use sizeof() so SIZEOF_MM_FREENODE always matches regardless of padding */
+#define MM_PTR_SIZE       sizeof(FAR struct mm_freenode_s *)
+#define SIZEOF_MM_FREENODE  sizeof(struct mm_freenode_s)
+#define CHECK_FREENODE_SIZE DEBUGASSERT(sizeof(struct mm_freenode_s) == SIZEOF_MM_FREENODE)
 
-#define MM_PTR_SIZE sizeof(FAR struct mm_freenode_s *)
+/* Global allocation sequence counter (defined in mm_initialize.c) */
+#if CONFIG_MM_BACKTRACE >= 0
+extern unsigned long g_mm_seqno;
+#endif
 
-#define SIZEOF_MM_FREENODE \
-	(SIZEOF_MM_ALLOCNODE + 2 * MM_PTR_SIZE + SIZEOF_MM_FREE_DEBUG_INFO)
+/* MM_ADD_BACKTRACE: capture call-stack into an allocated node.
+ * Called from mm_malloc / mm_memalign / mm_realloc after heapinfo_update_node().
+ * Requires CONFIG_MM_BACKTRACE > 0 and up_backtrace() arch support.
+ */
+#if CONFIG_MM_BACKTRACE > 0
+struct tcb_s;
+int up_backtrace(FAR struct tcb_s *tcb, FAR void **buffer, int size, int skip);
 
-#define CHECK_FREENODE_SIZE \
-	DEBUGASSERT(sizeof(struct mm_freenode_s) == SIZEOF_MM_FREENODE)
+#define MM_ADD_BACKTRACE(node)                                              \
+	do {                                                                    \
+		int _depth;                                                         \
+		_depth = up_backtrace(NULL, (node)->backtrace,                      \
+				      CONFIG_MM_BACKTRACE, CONFIG_MM_BACKTRACE_SKIP);       \
+		if (_depth < CONFIG_MM_BACKTRACE) {                                 \
+			(node)->backtrace[_depth] = NULL;                               \
+		}                                                                   \
+		(node)->seqno = ++g_mm_seqno;                                       \
+	} while (0)
+
+#elif defined(CONFIG_MM_BACKTRACE_SEQNO)
+
+#define MM_ADD_BACKTRACE(node)                                              \
+	do {                                                                    \
+		(node)->seqno = ++g_mm_seqno;                                       \
+	} while (0)
+
+#else
+#define MM_ADD_BACKTRACE(node)
+#endif
 
 /*
  *	This structure is used in the free delay list. 

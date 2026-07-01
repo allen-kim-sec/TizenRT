@@ -1,0 +1,3 @@
+config ENTRY_TEST_MM_BACKTRACE
+	bool "MM backtrace leak detection example"
+	depends on EXAMPLES_MM_BACKTRACE

@@ -56,6 +56,7 @@
 
 #include <tinyara/config.h>
 
+#include <stddef.h>
 #include <string.h>
 #include <assert.h>
 #include <debug.h>
@@ -71,6 +72,10 @@
 /****************************************************************************
  * Public Variables
  ****************************************************************************/
+
+#if CONFIG_MM_BACKTRACE >= 0
+unsigned long g_mm_seqno;	/* Monotonically increasing allocation sequence counter */
+#endif
 
 /****************************************************************************
  * Private Functions
@@ -235,6 +240,85 @@ int mm_initialize(FAR struct mm_heap_s *heap, FAR void *heapstart, size_t heapsi
 	CHECK_ALLOCNODE_SIZE;
 	CHECK_FREENODE_SIZE;
 #endif
+
+	/* Print node layout for CONFIG_MM_BACKTRACE porting analysis.
+	 * Shows actual struct sizes vs SIZEOF macros and per-field breakdown.
+	 */
+	{
+		struct mm_allocnode_s *_a = NULL;
+		struct mm_freenode_s  *_f = NULL;
+
+		mlldbg("=== mm_allocnode_s layout ===\n");
+		mlldbg("  sizeof(mm_allocnode_s) = %u  (SIZEOF_MM_ALLOCNODE = %u)\n",
+			(unsigned)sizeof(struct mm_allocnode_s),
+			(unsigned)SIZEOF_MM_ALLOCNODE);
+		mlldbg("  [%2u] preceding      : %u bytes\n",
+			(unsigned)offsetof(struct mm_allocnode_s, preceding),
+			(unsigned)sizeof(_a->preceding));
+#ifdef CONFIG_DEBUG_MM_HEAPINFO
+		mlldbg("  [%2u] alloc_call_addr: %u bytes\n",
+			(unsigned)offsetof(struct mm_allocnode_s, alloc_call_addr),
+			(unsigned)sizeof(_a->alloc_call_addr));
+		mlldbg("  [%2u] pid            : %u bytes\n",
+			(unsigned)offsetof(struct mm_allocnode_s, pid),
+			(unsigned)sizeof(_a->pid));
+		mlldbg("  [%2u] memory_state   : %u bytes\n",
+			(unsigned)offsetof(struct mm_allocnode_s, memory_state),
+			(unsigned)sizeof(_a->memory_state));
+#else
+		mlldbg("  (CONFIG_DEBUG_MM_HEAPINFO not set: no alloc_call_addr/pid/memory_state)\n");
+#endif
+		mlldbg("  [%2u] size           : %u bytes\n",
+			(unsigned)offsetof(struct mm_allocnode_s, size),
+			(unsigned)sizeof(_a->size));
+#ifdef CONFIG_MM_BACKTRACE_SEQNO
+		mlldbg("  [%2u] seqno          : %u bytes\n",
+			(unsigned)offsetof(struct mm_allocnode_s, seqno),
+			(unsigned)sizeof(_a->seqno));
+#endif
+#if CONFIG_MM_BACKTRACE > 0
+		mlldbg("  [%2u] backtrace[%d]  : %u bytes  (overlaps flink/blink when free)\n",
+			(unsigned)offsetof(struct mm_allocnode_s, backtrace),
+			CONFIG_MM_BACKTRACE,
+			(unsigned)sizeof(_a->backtrace));
+#endif
+		mlldbg("  size offset matches mm_freenode_s: %s\n",
+			(offsetof(struct mm_allocnode_s, size) ==
+			 offsetof(struct mm_freenode_s, size)) ? "YES" : "NO *** BUG ***");
+
+		mlldbg("=== mm_freenode_s layout ===\n");
+		mlldbg("  sizeof(mm_freenode_s)  = %u  (SIZEOF_MM_FREENODE  = %u)\n",
+			(unsigned)sizeof(struct mm_freenode_s),
+			(unsigned)SIZEOF_MM_FREENODE);
+		mlldbg("  [%2u] size           : %u bytes\n",
+			(unsigned)offsetof(struct mm_freenode_s, size),
+			(unsigned)sizeof(_f->size));
+		mlldbg("  [%2u] flink           : %u bytes\n",
+			(unsigned)offsetof(struct mm_freenode_s, flink),
+			(unsigned)sizeof(_f->flink));
+		mlldbg("  [%2u] blink           : %u bytes\n",
+			(unsigned)offsetof(struct mm_freenode_s, blink),
+			(unsigned)sizeof(_f->blink));
+#ifdef CONFIG_DEBUG_MM_FREEINFO
+		mlldbg("  [%2u] free_call_addr  : %u bytes\n",
+			(unsigned)offsetof(struct mm_freenode_s, free_call_addr),
+			(unsigned)sizeof(_f->free_call_addr));
+		mlldbg("  [%2u] free_call_pid   : %u bytes\n",
+			(unsigned)offsetof(struct mm_freenode_s, free_call_pid),
+			(unsigned)sizeof(_f->free_call_pid));
+#endif
+		mlldbg("  mmsize_t=%u  mmaddress_t=%u  pid_t=%u  ptr=%u bytes\n",
+			(unsigned)sizeof(mmsize_t),
+			(unsigned)sizeof(mmaddress_t),
+			(unsigned)sizeof(pid_t),
+			(unsigned)sizeof(void *));
+		mlldbg("  invariant SIZEOF_MM_FREENODE(%u) >= SIZEOF_MM_ALLOCNODE(%u): %s\n",
+			(unsigned)SIZEOF_MM_FREENODE, (unsigned)SIZEOF_MM_ALLOCNODE,
+			(SIZEOF_MM_FREENODE >= SIZEOF_MM_ALLOCNODE) ? "OK" : "*** VIOLATED ***");
+		mlldbg("============================\n");
+
+		(void)_a; (void)_f;
+	}
 
 	/* Set up global variables */
 

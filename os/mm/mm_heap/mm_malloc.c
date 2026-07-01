@@ -262,6 +262,7 @@ retry_after_gc:
 		heapinfo_add_size(heap, ((struct mm_allocnode_s *)node)->pid, node->size);
 		heapinfo_update_total_size(heap, node->size, ((struct mm_allocnode_s *)node)->pid);
 #endif
+		MM_ADD_BACKTRACE((struct mm_allocnode_s *)node);
 		ret = (void *)((char *)node + SIZEOF_MM_ALLOCNODE);
 	}
 
