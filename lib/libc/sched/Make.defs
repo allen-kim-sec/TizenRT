@@ -64,6 +64,10 @@ endif
 
 CSRCS += sched_cpucount.c
 
+ifeq ($(CONFIG_SCHED_BACKTRACE),y)
+CSRCS += sched_backtrace.c
+endif
+
 # Add the sched directory to the build
 
 DEPPATH += --dep-path sched

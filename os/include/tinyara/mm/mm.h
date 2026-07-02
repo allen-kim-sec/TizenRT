@@ -343,9 +343,62 @@ extern unsigned long g_mm_seqno;
 
 /* MM_ADD_BACKTRACE: capture call-stack into an allocated node.
  * Called from mm_malloc / mm_memalign / mm_realloc after heapinfo_update_node().
- * Requires CONFIG_MM_BACKTRACE > 0 and up_backtrace() arch support.
+ *
+ * Two engines:
+ *   CONFIG_SCHED_BACKTRACE - precise EHABI unwind (libgcc _Unwind_Backtrace)
+ *                            via sched_backtrace().  No frame pointer, no
+ *                            stack-scan heuristic, no syscall trap.
+ *   otherwise              - arch up_backtrace() (heuristic stack scan in the
+ *                            user-space port; instruction decode in kernel).
  */
 #if CONFIG_MM_BACKTRACE > 0
+
+#if defined(CONFIG_SCHED_BACKTRACE) && !defined(__KERNEL__)
+
+/* User-space (and flat) build: precise EHABI unwind via sched_backtrace().
+ *
+ * NOTE: this is deliberately NOT used for the kernel heap in a protected
+ * build.  _Unwind_Backtrace() is not safe in early-boot / IDLE / IRQ kernel
+ * contexts (the kernel EHABI tables are not set up the same way and the
+ * unwinder faulted with an undefined instruction).  The kernel heap therefore
+ * records seqno only (see the __KERNEL__ branch below).
+ *
+ * Forward declarations (avoid pulling <unistd.h>/<sched.h> into this widely
+ * included header).  pid_t is already available here (used by the nodes).
+ * Wrap in extern "C" so C++ TUs that include this header agree on C linkage
+ * with the real <sched.h>/<unistd.h> prototypes. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+pid_t getpid(void);
+int sched_backtrace(pid_t tid, FAR void **buffer, int size, int skip);
+#ifdef __cplusplus
+}
+#endif
+
+#define MM_ADD_BACKTRACE(node)                                              \
+	do {                                                                    \
+		int _depth;                                                         \
+		_depth = sched_backtrace(getpid(), (node)->backtrace,               \
+				      CONFIG_MM_BACKTRACE, CONFIG_MM_BACKTRACE_SKIP);       \
+		if (_depth < CONFIG_MM_BACKTRACE) {                                 \
+			(node)->backtrace[_depth] = NULL;                               \
+		}                                                                   \
+		(node)->seqno = ++g_mm_seqno;                                       \
+	} while (0)
+
+#elif defined(CONFIG_SCHED_BACKTRACE) && defined(__KERNEL__)
+
+/* Kernel heap in a protected build: EHABI unwind is unsafe here, so record
+ * the sequence number only and leave an empty backtrace. */
+#define MM_ADD_BACKTRACE(node)                                              \
+	do {                                                                    \
+		(node)->backtrace[0] = NULL;                                        \
+		(node)->seqno = ++g_mm_seqno;                                       \
+	} while (0)
+
+#else /* !CONFIG_SCHED_BACKTRACE */
+
 struct tcb_s;
 int up_backtrace(FAR struct tcb_s *tcb, FAR void **buffer, int size, int skip);
 
@@ -359,6 +412,8 @@ int up_backtrace(FAR struct tcb_s *tcb, FAR void **buffer, int size, int skip);
 		}                                                                   \
 		(node)->seqno = ++g_mm_seqno;                                       \
 	} while (0)
+
+#endif /* CONFIG_SCHED_BACKTRACE */
 
 #elif defined(CONFIG_MM_BACKTRACE_SEQNO)
 

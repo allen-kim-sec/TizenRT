@@ -106,7 +106,14 @@ ifeq ($(CONFIG_SCHED_THREAD_LOCAL),y)
   CMN_CSRCS += arm_tls.c
 endif
 
-ifeq ($(CONFIG_SCHED_BACKTRACE),y)
+# CONFIG_SCHED_BACKTRACE on amebasmart is served by the libc sched_backtrace()
+# implementation, which uses libgcc's EHABI unwinder (_Unwind_Backtrace) on the
+# current thread.  The arch up_backtrace() (arm_backtrace_thumb.c/_fp.c) is not
+# used and does not build here: it relies on _stext/_etext linker symbols this
+# platform does not export (it uses _stext_flash/_etext_flash instead).  So it
+# is intentionally NOT compiled.  Gate on CONFIG_ARCH_HAVE_BACKTRACE if a real
+# arch unwinder is ever wired up for this chip.
+ifeq ($(CONFIG_ARCH_HAVE_BACKTRACE),y)
   ifeq ($(CONFIG_FRAME_POINTER),y)
     ifeq ($(CONFIG_ARM_THUMB),y)
       CMN_CSRCS += arm_backtrace_thumb.c

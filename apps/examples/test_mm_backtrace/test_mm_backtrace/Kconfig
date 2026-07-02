@@ -1,0 +1,18 @@
+#
+# For a description of the syntax of this configuration file,
+# see kconfig-language at https://www.kernel.org/doc/Documentation/kbuild/kconfig-language.txt
+#
+
+config EXAMPLES_MM_BACKTRACE
+	bool "MM backtrace leak detection example"
+	default n
+	depends on DEBUG_MM_HEAPINFO
+	---help---
+		Allocates memory intentionally without freeing to demonstrate
+		CONFIG_MM_BACKTRACE leak detection and call-site backtrace.
+		Requires CONFIG_DEBUG_MM_HEAPINFO for alloc_call_addr recording.
+		With CONFIG_MM_BACKTRACE > 0 (NuttX port), shows full backtrace.
+
+config USER_ENTRYPOINT
+	string
+	default "test_mm_backtrace_main" if ENTRY_TEST_MM_BACKTRACE

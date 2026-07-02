@@ -137,7 +137,26 @@ ifeq ($(CONFIG_FRAME_POINTER),y)
 endif
 
 ARCHCFLAGS += -fno-builtin -fno-common
-ARCHCXXFLAGS = -fno-builtin -fexceptions 
+ARCHCXXFLAGS = -fno-builtin -fexceptions
+
+# sched_backtrace() walks the EHABI unwind tables (.ARM.exidx) via libgcc's
+# _Unwind_Backtrace.  Without unwind tables C functions get only
+# EXIDX_CANTUNWIND entries and the unwinder stops immediately (returns 0).
+#
+# Enable it for USER-space builds ONLY.  The kernel heap is seqno-only (it does
+# not unwind), and the kernel image spans flash + SRAM + DRAM: unwind tables on
+# RAM-resident kernel code (spinlocks, board .sramdram.only.text, ...) produce
+# .ARM.exidx entries whose R_ARM_PREL31 relocation to the far RAM address
+# overflows at link time.  Kernel-space builds are compiled with __KERNEL__ in
+# EXTRADEFINES (see LibTargets.mk / pass2), user-space (pass1) builds are not,
+# so key off that to keep the flag out of every kernel object at once.
+ifeq ($(CONFIG_SCHED_BACKTRACE),y)
+ifeq ($(findstring __KERNEL__,$(EXTRADEFINES)),)
+  ARCHCFLAGS += -funwind-tables
+  ARCHCXXFLAGS += -funwind-tables
+endif
+endif
+
 ifeq ($(QUICKBUILD),y)
 ARCHWARNINGS = -Wall -Werror -Wstrict-prototypes -Wshadow -Wundef -Wno-implicit-function-declaration -Wno-unused-function -Wno-unused-but-set-variable
 ARCHWARNINGSXX = -Wall -Werror -Wshadow -Wundef

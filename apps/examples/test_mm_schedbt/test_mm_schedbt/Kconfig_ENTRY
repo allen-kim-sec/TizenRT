@@ -1,0 +1,3 @@
+config ENTRY_TEST_MM_SCHEDBT
+	bool "MM leak detection example (sched_backtrace / EHABI)"
+	depends on EXAMPLES_MM_SCHEDBT

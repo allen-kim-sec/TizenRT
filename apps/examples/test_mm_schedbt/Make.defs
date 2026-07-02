@@ -1,0 +1,3 @@
+ifeq ($(CONFIG_EXAMPLES_MM_SCHEDBT),y)
+CONFIGURED_APPS += examples/test_mm_schedbt
+endif

@@ -1,0 +1,19 @@
+#
+# For a description of the syntax of this configuration file,
+# see kconfig-language at https://www.kernel.org/doc/Documentation/kbuild/kconfig-language.txt
+#
+
+config EXAMPLES_MM_SCHEDBT
+	bool "MM leak detection example (sched_backtrace / EHABI)"
+	default n
+	depends on DEBUG_MM_HEAPINFO && SCHED_BACKTRACE
+	---help---
+		Same intentional-leak scenario as test_mm_backtrace, but uses the
+		precise sched_backtrace() engine (CONFIG_SCHED_BACKTRACE), which
+		walks the compiler-generated EHABI unwind tables (.ARM.exidx) via
+		libgcc's _Unwind_Backtrace instead of the heuristic stack scan.
+		Requires CONFIG_DEBUG_MM_HEAPINFO and CONFIG_SCHED_BACKTRACE.
+
+config USER_ENTRYPOINT
+	string
+	default "test_mm_schedbt_main" if ENTRY_TEST_MM_SCHEDBT
