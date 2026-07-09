@@ -183,6 +183,7 @@
 #define HEAPINFO_DETAIL_SPECIFIC_HEAP 5
 #define HEAPINFO_INIT_PEAK 6
 #define HEAPINFO_DUMP_HEAP 7
+#define HEAPINFO_DETAIL_BACKTRACE 8
 #define HEAPINFO_PID_ALL -1
 
 #define HEAPINFO_INIT_INFO -1
@@ -801,6 +802,13 @@ void heapinfo_exclude_stacksize(void *stack_ptr);
 void heapinfo_peak_init(struct mm_heap_s *heap);
 void heapinfo_dealloc_tcbinfo(void *address, pid_t pid);
 void heapinfo_dump_heap(struct mm_heap_s *heap);
+#if CONFIG_MM_BACKTRACE > 0
+/* Walk the heap and print, one line per live allocation, the full call-stack
+ * captured at malloc time by sched_backtrace()/up_backtrace().  If pid is
+ * HEAPINFO_PID_ALL every allocation is printed, otherwise only those owned by
+ * the given pid. */
+void heapinfo_dump_backtrace(FAR struct mm_heap_s *heap, pid_t pid);
+#endif
 #ifdef CONFIG_HEAPINFO_USER_GROUP
 void heapinfo_update_group(mmsize_t size, pid_t pid);
 void heapinfo_update_group_info(pid_t pid, int group, int type);

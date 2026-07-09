@@ -57,7 +57,7 @@ else
 	echo ""
 	devices=()
 	count=1
-	for dev in /dev/ttyACM* /dev/ttyUSB*; do
+	for dev in /dev/ttyACM* /dev/ttyUSB* /dev/ttyCH*; do
 		if [ -e "$dev" ]; then
 			dev_name=$(basename "$dev")
 			devices+=("$dev_name")

@@ -59,10 +59,11 @@ VPATH	= :celt :silk :silk/fixed :src
 ASRCS	=
 CSRCS	=
 
+-include silk_sources.mk
+-include celt_sources.mk
 
+CSRCS += $(notdir $(SILK_SOURCES) $(SILK_SOURCES_FIXED))
 CSRCS += $(notdir $(wildcard celt/*.c))
-CSRCS += $(notdir $(wildcard silk/*.c))
-CSRCS += $(notdir $(wildcard silk/fixed/*.c))
 CSRCS += analysis.c \
 	 mlp.c \
 	 mlp_data.c \

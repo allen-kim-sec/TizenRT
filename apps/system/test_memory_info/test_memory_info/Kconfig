@@ -1,0 +1,15 @@
+#
+# For a description of the syntax of this configuration file,
+# see kconfig-language at https://www.kernel.org/doc/Documentation/kbuild/kconfig-language.txt
+#
+
+config SYSTEM_TEST_MEMORY_INFO
+	bool "Test Memory Info tool"
+	default n
+	depends on DEBUG_MM_HEAPINFO
+	---help---
+		Enable the test_memory_info shell command. It provides heapinfo-like
+		heap inspection and, with the -t option, dumps each task's live
+		allocations together with the allocation backtrace (captured via
+		sched_backtrace()) on a single line. The -t option additionally
+		requires CONFIG_MM_BACKTRACE > 0.
